@@ -7,9 +7,10 @@ NOVA talks to you, remembers you, and controls your PC through safe, explicitly
 approved tools. It is built to run comfortably on an 8 GB machine with
 integrated graphics.
 
-> Status: **Phase 1 complete** — project skeleton, configuration, secret
-> handling, security policy engine, audit log and tests. The UI, AI brain and
-> voice follow in later phases.
+> Status: **Phase 2 complete** — desktop Command Center shell (PySide6 +
+> QtWebEngine), bundled React front-end, three live themes, particle orb, chat
+> with a mock backend, settings and a loopback API. The AI brain and voice
+> follow in later phases.
 
 ---
 
@@ -36,6 +37,34 @@ Heavy subsystems are optional extras so the core the tests need stays light:
 .\.venv\Scripts\python -m pip install -e ".[ui]"      # PySide6 / QtWebEngine
 .\.venv\Scripts\python -m pip install -e ".[tools]"   # PC-control tooling
 .\.venv\Scripts\python -m pip install -e ".[all]"     # everything
+```
+
+## Build the front-end (once)
+
+The desktop shell renders a React front-end that is **bundled locally** — no
+CDN, fonts included. It must be built once before `nova ui` will show a window:
+
+```powershell
+cd ui\web
+npm install --include=dev
+npm run build      # writes ui/web/dist
+```
+
+Then launch the app:
+
+```powershell
+nova ui                            # normal launch
+nova ui --panel chat               # open a specific panel
+nova ui --theme crimson            # force a theme for one run
+```
+
+Development/verification helpers built into the same command:
+
+```powershell
+nova ui --shot artifacts\home.png --shot-delay 2      # capture the window and exit
+nova ui --measure 12 --out artifacts\memory.json      # measure idle memory and exit
+nova ui --panel chat --seed "write me a python function"  # auto-send a message (demo)
+python scripts\measure_memory.py --seconds 14         # full process-tree memory report
 ```
 
 ## Verify
@@ -78,15 +107,39 @@ variables — never any key characters.
 
 ```
 src/nova/
-  config/     paths, typed settings, schema migrations
-  security/   policy engine + allowlists, secret store, redaction, audit log
-  logging_setup.py   rotating, redacting logs
-  cli.py      diagnostics
+  config/       paths, typed settings, schema migrations
+  security/     policy engine + allowlists, secret store, redaction, audit log
+  api/          local FastAPI + WebSocket surface (auth, state, mock chat, server)
+  ui/qt/        PySide6 shell: frameless window, tray, app runner + harness
+  diagnostics.py  environment/secret report (shared by CLI and API)
+  logging_setup.py  rotating, redacting logs
+  cli.py        version / diag / ui
+ui/web/         React + TypeScript front-end (Vite), built into ui/web/dist
+scripts/        measure_memory.py (performance harness)
 ```
 
-Later phases add `providers/`, `voice/`, `agent/`, `tools/`, `memory/`, `api/`
-and `ui/`. The Python core and the React front-end communicate over a
-loopback-only FastAPI + WebSocket surface with a per-session token.
+**Shell and core.** The Qt event loop owns the process. uvicorn runs in a
+background thread bound to `127.0.0.1` on a random free port, guarded by a
+random per-session token; the same server also serves the built front-end, so
+the web view and the API share one origin. Window actions (minimise, maximise,
+close, drag) travel from the web title bar to Qt over a queued signal, and
+native edge resizing is handled via `WM_NCHITTEST`.
+
+Later phases add `providers/`, `voice/`, `agent/`, `tools/` and `memory/`.
+
+## Performance
+
+Measured on this machine (Windows 11, i7-1355U, 7.5 GB RAM, Intel UHD):
+
+| Metric | Value |
+|---|---|
+| Idle resident memory (whole process tree) | **~518 MB** |
+| — main process | ~413 MB |
+| — QtWebEngine renderer | ~96 MB |
+| — launcher shims | ~8 MB |
+| Orb animation | capped at 30 FPS (20 FPS in Performance mode), auto-degrades on slow frames |
+
+Reproduce with `python scripts\measure_memory.py --seconds 14`.
 
 ## Security model
 
@@ -105,6 +158,15 @@ loopback-only FastAPI + WebSocket surface with a per-session token.
 
 - **`no credential-manager backend available`** — install the `keyring` extra
   and ensure you are on Windows with a user profile loaded.
+- **`UI bundle not found`** when launching — build the front-end (`cd ui\web &&
+  npm install --include=dev && npm run build`).
+- **`npm run build` fails with "tsc is not recognized"** — if `NODE_ENV=production`
+  is set globally, npm skips devDependencies. Install them with
+  `npm install --include=dev`.
+- **`pip install` fails with "Missing dependencies for SOCKS support"** — a
+  system SOCKS proxy is configured but PySocks is absent. Install `pysocks`
+  first, or bypass the proxy for that command: `set "no_proxy=*" && set
+  "NO_PROXY=*" && pip ...`.
 - **Settings won't load** — check `nova diag` for the settings path; a corrupt
   file raises a `ConfigError` naming the file. Deleting it restores defaults.
 - **Want a self-contained layout?** Set `NOVA_PORTABLE=1`; everything then

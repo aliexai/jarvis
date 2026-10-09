@@ -23,6 +23,7 @@ htmlcov/
 # Node / front-end build output (sources are committed, build output is not)
 node_modules/
 ui/web/dist/
+*.tsbuildinfo
 
 # App runtime data (portable mode)
 data/
@@ -30,6 +31,9 @@ logs/
 *.db
 *.db-wal
 *.db-shm
+
+# Verification artifacts (screenshots/reports produced by the harness)
+artifacts/
 
 # OS / editor
 Thumbs.db

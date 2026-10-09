@@ -1,0 +1,24 @@
+/* Live-switchable themes. Each sets the accent trio used across the UI and orb.
+   A user accent colour can override --accent at runtime via an inline style. */
+
+:root,
+[data-theme='cyan'] {
+  --accent: #22d3ee;
+  --accent-2: #38bdf8;
+  --accent-soft: rgba(34, 211, 238, 0.14);
+  --accent-line: rgba(34, 211, 238, 0.42);
+}
+
+[data-theme='emerald'] {
+  --accent: #34d399;
+  --accent-2: #10b981;
+  --accent-soft: rgba(52, 211, 153, 0.14);
+  --accent-line: rgba(52, 211, 153, 0.42);
+}
+
+[data-theme='crimson'] {
+  --accent: #f43f5e;
+  --accent-2: #fb7185;
+  --accent-soft: rgba(244, 63, 94, 0.14);
+  --accent-line: rgba(244, 63, 94, 0.42);
+}

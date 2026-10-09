@@ -1,0 +1,60 @@
+/* Design tokens: spacing on an 8px grid, typography, elevation, motion. */
+
+:root {
+  /* Surfaces */
+  --bg-0: #04060b;
+  --bg-1: #080c14;
+  --bg-2: #0d131e;
+  --panel: rgba(15, 23, 38, 0.55);
+  --panel-2: rgba(255, 255, 255, 0.035);
+  --panel-solid: #0a1120;
+
+  /* Text */
+  --text: #e8eff8;
+  --text-dim: #94a4b9;
+  --text-faint: #61708a;
+
+  /* Lines */
+  --line: rgba(148, 163, 184, 0.14);
+  --line-strong: rgba(148, 163, 184, 0.28);
+
+  /* 8px spacing grid */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 40px;
+  --space-8: 48px;
+
+  /* Radii */
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 16px;
+
+  /* Typography */
+  --font-display: 'Orbitron', 'Rajdhani', system-ui, sans-serif;
+  --font-ui: 'Rajdhani', 'Inter', system-ui, sans-serif;
+  --font-body: 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Mono', monospace;
+
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-md: 13px;
+  --text-lg: 15px;
+  --text-xl: 20px;
+  --text-2xl: 26px;
+
+  /* Motion */
+  --dur-1: 120ms;
+  --dur-2: 220ms;
+  --dur-3: 400ms;
+  --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+
+  /* Layout */
+  --titlebar-h: 40px;
+  --nav-w: 88px;
+
+  color-scheme: dark;
+}

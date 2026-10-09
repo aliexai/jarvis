@@ -58,6 +58,7 @@ class AuditLog:
         self._path = Path(db_path)
         self._path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
+        self._closed = False
         self._conn = sqlite3.connect(str(self._path), check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         with self._conn:
@@ -164,5 +165,9 @@ class AuditLog:
         return True, None
 
     def close(self) -> None:
+        """Close the underlying connection. Idempotent."""
         with self._lock:
+            if self._closed:
+                return
+            self._closed = True
             self._conn.close()

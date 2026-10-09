@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 
 from fakes import FakeBackend
-from nova.cli import _diagnostics
+from nova.diagnostics import build_diagnostics
 from nova.security.secrets import GEMINI_API_KEY, SOURCE_ENV, SecretStore
 
 
@@ -17,7 +17,7 @@ def test_diagnostics_reports_ignored_env_and_prefix(tmp_path, monkeypatch):
         environ={GEMINI_API_KEY: "sk-or-v1-wrong-provider-1234567890"},
     )
 
-    report = _diagnostics(store=store)
+    report = build_diagnostics(store=store)
 
     entry = report["secrets"][GEMINI_API_KEY]
     assert entry["source"] == SOURCE_ENV

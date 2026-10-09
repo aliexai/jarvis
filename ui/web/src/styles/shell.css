@@ -1,0 +1,207 @@
+/* App shell: title bar, navigation rail, content area. */
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* ---- title bar -------------------------------------------------------- */
+.titlebar {
+  height: var(--titlebar-h);
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding-left: var(--space-4);
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent);
+}
+
+.titlebar__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  letter-spacing: 0.24em;
+}
+
+.brand-mark {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 35%, var(--accent), transparent 70%);
+  box-shadow: 0 0 12px var(--accent-line);
+}
+
+.titlebar__sub {
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  letter-spacing: 0.2em;
+  color: var(--text-faint);
+}
+
+.titlebar__spacer {
+  flex: 1;
+}
+
+.titlebar__status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-right: var(--space-2);
+}
+
+.titlebar__buttons {
+  display: flex;
+  height: 100%;
+}
+
+.titlebar__btn {
+  width: 46px;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+}
+
+.titlebar__btn:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--text);
+}
+
+.titlebar__btn--close:hover {
+  background: #e11d48;
+  color: #fff;
+}
+
+.titlebar__btn svg {
+  width: 11px;
+  height: 11px;
+}
+
+/* ---- body ------------------------------------------------------------- */
+.body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.nav {
+  width: var(--nav-w);
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-2);
+  border-right: 1px solid var(--line);
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.nav__item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: var(--space-2) 4px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  transition: all var(--dur-2) var(--ease);
+}
+
+.nav__item:hover {
+  color: var(--text-dim);
+  background: var(--panel-2);
+}
+
+.nav__item--active {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
+}
+
+.nav__item--active::before {
+  content: '';
+  position: absolute;
+  left: -9px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 22px;
+  border-radius: 2px;
+  background: var(--accent);
+  box-shadow: 0 0 10px var(--accent);
+}
+
+.nav__icon {
+  width: 22px;
+  height: 22px;
+}
+
+.nav__label {
+  font-family: var(--font-ui);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.nav__spacer {
+  flex: 1;
+}
+
+.nav__foot {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--text-faint);
+  text-align: center;
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--line);
+}
+
+.content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+.panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-5);
+  gap: var(--space-4);
+  overflow: hidden;
+  min-width: 0;
+}
+
+.panel__head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  flex: none;
+}
+
+.panel__title {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.panel__sub {
+  color: var(--text-faint);
+  font-size: var(--text-sm);
+}
