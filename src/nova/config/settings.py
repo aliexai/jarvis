@@ -51,9 +51,36 @@ class VoiceSettings(BaseModel):
 class LimitSettings(BaseModel):
     """Soft cost limits. ``hard_stop`` blocks the call when a limit is hit."""
 
+    enabled: bool = True
     daily_usd: float = 1.0
     monthly_usd: float = 10.0
     hard_stop: bool = True
+
+
+class ProviderSettings(BaseModel):
+    """Which brain to use, and how it reaches the network."""
+
+    name: Literal["gemini", "mock"] = "gemini"
+    # bypass | system | manual - never writes to the Windows proxy settings.
+    proxy_mode: Literal["bypass", "system", "manual"] = "bypass"
+    proxy_url: str = ""
+    timeout_seconds: float = 60.0
+    max_retries: int = 3
+    tools_enabled: bool = True
+    # How many recent messages to send verbatim before summarizing older ones.
+    context_window_messages: int = 12
+    summarize_after_messages: int = 20
+
+
+class PricingSettings(BaseModel):
+    """Which price column to use. The free tier is free of charge."""
+
+    tier: Literal["free", "paid"] = "free"
+
+
+class PrivacySettings(BaseModel):
+    notice_acknowledged: bool = False
+    remind_before_attach: bool = True
 
 
 class SecuritySettings(BaseModel):
@@ -87,6 +114,9 @@ class Settings(BaseModel):
     voice: VoiceSettings = Field(default_factory=VoiceSettings)
     limits: LimitSettings = Field(default_factory=LimitSettings)
     security: SecuritySettings = Field(default_factory=SecuritySettings)
+    provider: ProviderSettings = Field(default_factory=ProviderSettings)
+    pricing: PricingSettings = Field(default_factory=PricingSettings)
+    privacy: PrivacySettings = Field(default_factory=PrivacySettings)
 
 
 class EnvOverrides(BaseSettings):

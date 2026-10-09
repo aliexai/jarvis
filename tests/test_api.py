@@ -137,6 +137,7 @@ def test_websocket_streams_mock_chat(client):
         hello = websocket.receive_json()
         assert hello["type"] == "hello"
         assert "settings" in hello["data"]
+        assert "budget" in hello["data"]
 
         websocket.send_json({"type": "chat.send", "text": "write me a python function"})
 
@@ -147,13 +148,36 @@ def test_websocket_streams_mock_chat(client):
             seen.append(message["type"])
             if message["type"] == "chat.delta":
                 text += message["data"]["text"]
-            if message["type"] == "chat.done":
+            if message["type"] in ("chat.done", "chat.error"):
                 break
 
     assert "chat.start" in seen
     assert "chat.delta" in seen
-    assert "orb.state" in seen
+    assert "chat.usage" in seen
     assert "```python" in text
+
+
+def test_websocket_reports_error_without_chat_done(client, core_state):
+    """A failing provider must surface chat.error, never hang the stream."""
+    from nova.providers.errors import AuthError
+    from nova.providers.mock import MockProvider
+
+    failing = MockProvider(fail_with=AuthError("no key"))
+    core_state.provider = lambda: failing  # type: ignore[method-assign]
+    core_state.chat = core_state._build_chat()
+
+    with client.websocket_connect(f"/ws?token={TOKEN}") as websocket:
+        websocket.receive_json()  # hello
+        websocket.send_json({"type": "chat.send", "text": "explain list versus tuple"})
+
+        kinds: list[str] = []
+        while True:
+            message = websocket.receive_json()
+            kinds.append(message["type"])
+            if message["type"] in ("chat.done", "chat.error"):
+                break
+
+    assert "chat.error" in kinds
 
 
 def test_websocket_rejects_empty_message(client):
@@ -162,6 +186,22 @@ def test_websocket_rejects_empty_message(client):
         websocket.send_json({"type": "chat.send", "text": "   "})
         message = websocket.receive_json()
         assert message["type"] == "chat.error"
+
+
+def test_websocket_answers_time_locally(client):
+    with client.websocket_connect(f"/ws?token={TOKEN}") as websocket:
+        websocket.receive_json()  # hello
+        websocket.send_json({"type": "chat.send", "text": "what time is it?"})
+
+        model = None
+        while True:
+            message = websocket.receive_json()
+            if message["type"] == "chat.start":
+                model = message["data"]["model"]
+            if message["type"] in ("chat.done", "chat.error"):
+                break
+
+    assert model == "local"
 
 
 def test_websocket_updates_settings(client, core_state):

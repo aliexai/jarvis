@@ -7,10 +7,10 @@ NOVA talks to you, remembers you, and controls your PC through safe, explicitly
 approved tools. It is built to run comfortably on an 8 GB machine with
 integrated graphics.
 
-> Status: **Phase 2 complete** — desktop Command Center shell (PySide6 +
-> QtWebEngine), bundled React front-end, three live themes, particle orb, chat
-> with a mock backend, settings and a loopback API. The AI brain and voice
-> follow in later phases.
+> Status: **Phase 3 complete** — the Gemini brain: real streaming over the local
+> API with cancel, model routing, function calling, conversation summaries,
+> JSON-mode output, cost metering and safe network/proxy handling. Voice
+> follows in Phase 4.
 
 ---
 
@@ -109,10 +109,17 @@ variables — never any key characters.
 src/nova/
   config/       paths, typed settings, schema migrations
   security/     policy engine + allowlists, secret store, redaction, audit log
-  api/          local FastAPI + WebSocket surface (auth, state, mock chat, server)
+  providers/    vendor-neutral LLM interface, Gemini + mock, routing, pricing
+  chat/         context window + summaries, the streaming chat pipeline
+  tools/        tool registry, JSON-schema validation, policy-gated executor
+  memory/       SQLite (WAL): conversations, messages, summaries, usage
+  api/          local FastAPI + WebSocket surface (auth, state, server)
   ui/qt/        PySide6 shell: frameless window, tray, app runner + harness
+  budget.py     cost limits and the hard stop
+  net.py        proxy detection/resolution and SDK http options
+  validation.py minimal JSON-schema validator (tools + structured output)
+  intents.py    trivial questions answered locally with no API call
   diagnostics.py  environment/secret report (shared by CLI and API)
-  logging_setup.py  rotating, redacting logs
   cli.py        version / diag / ui
 ui/web/         React + TypeScript front-end (Vite), built into ui/web/dist
 scripts/        measure_memory.py (performance harness)
@@ -125,7 +132,58 @@ the web view and the API share one origin. Window actions (minimise, maximise,
 close, drag) travel from the web title bar to Qt over a queued signal, and
 native edge resizing is handled via `WM_NCHITTEST`.
 
-Later phases add `providers/`, `voice/`, `agent/`, `tools/` and `memory/`.
+**Chat pipeline.** A message is answered locally if it matches a trivial intent,
+otherwise it is routed to the fast or strong model, sent with a recent-window
+context (older turns compressed into a stored summary), streamed back chunk by
+chunk, and — if the model asks for a tool — the call is validated against its
+JSON schema and checked by the policy engine before it runs. Usage, cost and a
+transcript are persisted to SQLite. Streaming runs as a background task, so
+`chat.cancel` can stop it mid-flight and the partial reply is still saved.
+
+## Brain, cost and network
+
+- **Models** are configurable in Settings: a *fast* model (default
+  `gemini-3.5-flash-lite`) and a *strong* model (default `gemini-3.8-flash`).
+  Routing picks automatically — short requests go fast, coding/planning/long
+  input goes strong — and Settings can force either, or a per-message override
+  is available.
+- **Prices** come from a table transcribed from the official pricing page
+  (`last_checked 2026-10-09`), with a free/paid tier switch. The free tier is
+  free of charge. A model that is not in the table is reported as **unknown**,
+  never as a guessed number. A `prices.json` next to the settings file overrides
+  the built-in table without a code change.
+- **Limits**: daily and monthly soft limits with an optional hard stop that
+  blocks new requests. The title bar shows today's spend against the limit, each
+  message shows its tokens and cost, and Settings shows the running totals.
+- **Proxy**: this machine advertises a SOCKS proxy (`127.0.0.1:9050`) which
+  httpx cannot use — it raises `Unknown scheme for proxy URL` simply building a
+  client. Settings offers *bypass* (default), *system* and *manual*; an
+  unusable system proxy is reported and bypassed. **Windows proxy settings are
+  never modified.**
+- **Privacy**: a one-time notice explains that free-tier Gemini content may be
+  used by Google to improve its products. No local file or code is ever sent
+  unless you attach it.
+- **Errors** are mapped to friendly messages (invalid key, no network, timeout,
+  rate limit, quota exhausted, model unavailable, safety block, budget) and
+  retried with exponential backoff where retrying is safe. Stack traces are
+  logged, never shown.
+
+## Testing the connection and going live
+
+Settings has a **Test connection** button: it sends one tiny request, reports
+OK/failed, the model id it tested and the latency, and never reveals the key.
+
+To enable the real brain, put a key in `.env` (see `.env.example`):
+
+```
+NOVA_GEMINI_API_KEY=AIza...
+```
+
+Then run the live test, which is skipped when no key is configured:
+
+```powershell
+.venv\Scripts\python -m pytest tests\test_live_gemini.py -v
+```
 
 ## Performance
 
@@ -133,9 +191,9 @@ Measured on this machine (Windows 11, i7-1355U, 7.5 GB RAM, Intel UHD):
 
 | Metric | Value |
 |---|---|
-| Idle resident memory (whole process tree) | **~518 MB** |
-| — main process | ~413 MB |
-| — QtWebEngine renderer | ~96 MB |
+| Idle resident memory (whole process tree) | **~508 MB** |
+| — main process | ~403 MB |
+| — QtWebEngine renderer | ~97 MB |
 | — launcher shims | ~8 MB |
 | Orb animation | capped at 30 FPS (20 FPS in Performance mode), auto-degrades on slow frames |
 
@@ -158,6 +216,14 @@ Reproduce with `python scripts\measure_memory.py --seconds 14`.
 
 - **`no credential-manager backend available`** — install the `keyring` extra
   and ensure you are on Windows with a user profile loaded.
+- **“The API key was rejected”** — no usable Gemini key was found. Put
+  `NOVA_GEMINI_API_KEY=AIza...` in a local `.env`, then use Settings → Test
+  connection. `nova diag` shows which source each secret came from.
+- **The live test is skipped** — that is the expected behaviour when
+  `NOVA_GEMINI_API_KEY` is not set.
+- **A SOCKS system proxy breaks the SDK** — on this machine the Windows proxy
+  is `socks4://[::1]:9050`, which httpx cannot use. NOVA defaults to
+  *bypass*; switch to *system* in Settings only if the proxy speaks http(s).
 - **`UI bundle not found`** when launching — build the front-end (`cd ui\web &&
   npm install --include=dev && npm run build`).
 - **`npm run build` fails with "tsc is not recognized"** — if `NODE_ENV=production`
@@ -174,6 +240,7 @@ Reproduce with `python scripts\measure_memory.py --seconds 14`.
 
 ## Roadmap
 
-Phase 2 UI shell & themes · Phase 3 Gemini brain · Phase 4 voice · Phase 5
-PC-control tools · Phase 6 coding agent · Phase 7 memory & Agent Town ·
-Phase 8 world monitor, system panel, mini mode · Phase 9 packaging & hardening.
+Done: skeleton & security (1) · Command Center shell (2) · Gemini brain (3).
+Next: **Phase 4 voice** · Phase 5 PC-control tools · Phase 6 coding agent ·
+Phase 7 memory & Agent Town · Phase 8 world monitor, system panel, mini mode ·
+Phase 9 packaging & hardening.

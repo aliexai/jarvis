@@ -38,6 +38,7 @@ class Permission(StrEnum):
     SCREEN_CAPTURE = "screen.capture"
     AUDIO_RECORD = "audio.record"
     SYSTEM_CONTROL = "system.control"
+    SYSTEM_INFO = "system.info"
 
 
 class Decision(StrEnum):
@@ -131,6 +132,8 @@ class PolicyEngine:
             return PolicyResult(Decision.ASK, f"{permission.value} requires explicit confirmation")
         if permission in (Permission.CLIPBOARD_WRITE, Permission.SYSTEM_CONTROL):
             return PolicyResult(Decision.ALLOW, f"{permission.value} is permitted")
+        if permission is Permission.SYSTEM_INFO:
+            return PolicyResult(Decision.ALLOW, "reading local system information is permitted")
         return PolicyResult(Decision.DENY, f"unknown permission: {permission}")
 
     def _check_fs(self, permission: Permission, resource: str | None) -> PolicyResult:

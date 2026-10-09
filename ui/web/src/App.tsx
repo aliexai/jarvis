@@ -1,4 +1,5 @@
 import { NavRail } from './components/NavRail';
+import { PrivacyNotice } from './components/PrivacyNotice';
 import { TitleBar } from './components/TitleBar';
 import {
   AgentsIcon,
@@ -69,6 +70,7 @@ export function App() {
       <div className="body">
         <NavRail />
         <main className="content">
+          <PrivacyNotice />
           {panel === 'home' ? <HomePanel /> : null}
           {panel === 'chat' ? <ChatPanel /> : null}
           {panel === 'settings' ? <SettingsPanel /> : null}

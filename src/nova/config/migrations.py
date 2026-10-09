@@ -14,9 +14,22 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 _MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {}
+
+
+def _v1_to_v2(data: dict[str, Any]) -> dict[str, Any]:
+    """Phase 3 added the provider/pricing/privacy sections.
+
+    All new fields have defaults, so nothing needs reshaping - the bump exists
+    so the file advertises the newer schema.
+    """
+    data["version"] = 2
+    return data
+
+
+_MIGRATIONS[1] = _v1_to_v2
 
 
 def migrate(raw: dict[str, Any] | None) -> dict[str, Any]:

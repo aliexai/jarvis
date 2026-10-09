@@ -84,26 +84,43 @@ def _grab_with_mss(window) -> QPixmap | None:
 
 
 def capture_window(window, out_path: Path) -> bool:
-    """Capture the window to ``out_path``. Tries Qt first, then mss."""
+    """Capture the window to ``out_path``. Tries Qt first, then mss.
+
+    The window is temporarily made topmost, otherwise a screen grab picks up
+    whatever application happens to be in front (Windows will not let a
+    background process steal the foreground).
+    """
+    window.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
+    window.show()
     window.raise_()
     window.activateWindow()
+    try:
+        import ctypes
+
+        ctypes.windll.user32.SetForegroundWindow(int(window.winId()))
+    except Exception:
+        pass
+
     QApplication.processEvents()
-    time.sleep(0.35)
+    time.sleep(0.6)
     QApplication.processEvents()
 
     pixmap: QPixmap | None = None
-    screen = window.screen() or QGuiApplication.primaryScreen()
-    if screen is not None:
-        grabbed = screen.grabWindow(int(window.winId()))
-        if not grabbed.isNull() and not _is_blank(grabbed):
-            pixmap = grabbed
-    if pixmap is None:
-        pixmap = _grab_with_mss(window)
-    if pixmap is None:
-        return False
-
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    return bool(pixmap.save(str(out_path), "PNG"))
+    try:
+        screen = window.screen() or QGuiApplication.primaryScreen()
+        if screen is not None:
+            grabbed = screen.grabWindow(int(window.winId()))
+            if not grabbed.isNull() and not _is_blank(grabbed):
+                pixmap = grabbed
+        if pixmap is None:
+            pixmap = _grab_with_mss(window)
+        if pixmap is None:
+            return False
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        return bool(pixmap.save(str(out_path), "PNG"))
+    finally:
+        window.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, False)
+        window.show()
 
 
 def tree_memory() -> dict:

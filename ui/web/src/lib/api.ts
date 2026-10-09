@@ -1,4 +1,6 @@
 import type {
+  BudgetStatus,
+  ConnectionTest,
   Diagnostics,
   PanelId,
   SecretsResponse,
@@ -51,6 +53,23 @@ export function getSecrets(): Promise<SecretsResponse> {
 
 export function getDiagnostics(): Promise<Diagnostics> {
   return request<Diagnostics>('/api/diagnostics');
+}
+
+export function getUsage(): Promise<{
+  budget: BudgetStatus;
+  recent: Record<string, unknown>[];
+  pricing: Record<string, unknown>;
+}> {
+  return request('/api/usage');
+}
+
+export function testConnection(model?: string): Promise<ConnectionTest> {
+  const query = model ? `?model=${encodeURIComponent(model)}` : '';
+  return request<ConnectionTest>(`/api/provider/test${query}`, { method: 'POST' });
+}
+
+export function acknowledgePrivacy(): Promise<Settings> {
+  return request<Settings>('/api/privacy/acknowledge', { method: 'POST' });
 }
 
 export function windowAction(action: string): void {

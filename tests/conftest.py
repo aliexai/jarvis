@@ -67,6 +67,9 @@ def core_state(tmp_path):
         paths=paths,
         secrets=store,
         audit_path=tmp_path / "audit.db",
+        db_path=tmp_path / "memory.db",
     )
+    # API tests must be deterministic and offline.
+    state.settings.provider.name = "mock"
     yield state
     state.close()

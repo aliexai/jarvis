@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import itertools
+import asyncio
 from pathlib import Path
 from typing import Any
 
@@ -11,83 +11,45 @@ from fastapi.staticfiles import StaticFiles
 
 from nova import __version__
 from nova.api.auth import make_guard, token_matches
-from nova.api.chat import stream_reply
 from nova.api.state import CoreState
 
 WINDOW_ACTIONS = frozenset({"minimize", "toggle-maximize", "close", "start-move"})
-_message_ids = itertools.count(1)
-
 WS_UNAUTHORIZED = 4401
 
 
-def _model_for(state: CoreState) -> str:
-    routing = state.settings.models.routing
-    if routing == "strong":
-        return state.settings.models.strong
-    if routing == "fast":
-        return state.settings.models.fast
-    return state.settings.models.fast
+class _Sender:
+    """Serialises sends so background chat tasks and the receive loop never clash."""
 
+    def __init__(self, websocket: WebSocket) -> None:
+        self._ws = websocket
+        self._lock = asyncio.Lock()
+        self._closed = False
 
-async def _handle_message(websocket: WebSocket, state: CoreState, message: dict) -> None:
-    kind = message.get("type")
-
-    if kind == "ping":
-        await websocket.send_json({"type": "pong"})
-        return
-
-    if kind == "chat.send":
-        text = str(message.get("text") or "").strip()
-        if not text:
-            await websocket.send_json({"type": "chat.error", "data": {"message": "empty message"}})
+    async def send(self, payload: dict[str, Any]) -> None:
+        if self._closed:
             return
-        await _stream_chat(websocket, state, text)
-        return
+        async with self._lock:
+            try:
+                await self._ws.send_json(payload)
+            except Exception:
+                self._closed = True
 
-    if kind == "settings.update":
-        patch = message.get("patch") or {}
-        try:
-            state.update_settings(patch)
-        except Exception as exc:
-            await websocket.send_json({"type": "settings.error", "data": {"message": str(exc)}})
-            return
-        await websocket.send_json(
-            {"type": "settings", "data": state.settings.model_dump(mode="json")}
-        )
-        return
-
-    await websocket.send_json(
-        {"type": "error", "data": {"message": f"unknown message type: {kind!r}"}}
-    )
+    def close(self) -> None:
+        self._closed = True
 
 
-async def _stream_chat(websocket: WebSocket, state: CoreState, text: str) -> None:
-    model = _model_for(state)
-    message_id = f"m{next(_message_ids)}"
-
-    await websocket.send_json({"type": "orb.state", "data": {"state": "thinking"}})
-    await websocket.send_json(
-        {"type": "chat.start", "data": {"id": message_id, "role": "assistant", "model": model}}
-    )
-
-    speaking = False
-    async for chunk in stream_reply(text):
-        if not speaking:
-            speaking = True
-            await websocket.send_json({"type": "orb.state", "data": {"state": "speaking"}})
-        await websocket.send_json({"type": "chat.delta", "data": {"id": message_id, "text": chunk}})
-
-    await websocket.send_json({"type": "chat.done", "data": {"id": message_id, "model": model}})
-    await websocket.send_json({"type": "orb.state", "data": {"state": "idle"}})
-
-    if state.audit is not None:
-        state.audit.append(
-            "user",
-            "chat.send",
-            target=model,
-            decision="allow",
-            detail=f"{len(text)} chars",
-        )
+def _hello_payload(state: CoreState) -> dict[str, Any]:
+    return {
+        "version": __version__,
+        "settings": state.settings.model_dump(mode="json"),
+        "budget": state.budget_status(),
+        "tools": state.registry.names() if state.registry else [],
+        "pricing": {
+            "tier": state.settings.pricing.tier,
+            "last_checked": state.price_table.last_checked,
+            "source": state.price_table.source,
+        },
+    }
 
 
 def create_app(state: CoreState, static_dir: Path | None = None) -> FastAPI:
@@ -124,6 +86,70 @@ def create_app(state: CoreState, static_dir: Path | None = None) -> FastAPI:
     async def get_diagnostics() -> dict[str, Any]:
         return state.diagnostics()
 
+    @app.get("/api/usage", dependencies=[guard])
+    async def get_usage() -> dict[str, Any]:
+        return {
+            "budget": state.budget_status(),
+            "recent": state.usage.recent(50) if state.usage else [],
+            "pricing": {
+                "tier": state.settings.pricing.tier,
+                "last_checked": state.price_table.last_checked,
+                "source": state.price_table.source,
+            },
+        }
+
+    @app.get("/api/conversations", dependencies=[guard])
+    async def list_conversations() -> dict[str, Any]:
+        return {"conversations": state.store.list_conversations() if state.store else []}
+
+    @app.get("/api/conversations/{conversation_id}/messages", dependencies=[guard])
+    async def conversation_messages(conversation_id: str) -> dict[str, Any]:
+        if state.store is None:
+            return {"messages": []}
+        rows = state.store.recent_messages(conversation_id, 200)
+        return {
+            "messages": [
+                {
+                    "id": row.id,
+                    "role": row.role,
+                    "content": row.content,
+                    "model": row.model,
+                    "created_at": row.created_at,
+                    "cost_usd": row.cost_usd,
+                    "tool_name": row.tool_name,
+                    "tool_result": row.tool_result,
+                    "error_kind": row.error_kind,
+                    "local": row.local,
+                }
+                for row in rows
+            ]
+        }
+
+    @app.post("/api/provider/test", dependencies=[guard])
+    async def provider_test(model: str | None = None) -> dict[str, Any]:
+        target = model or state.settings.models.fast
+        provider = state.provider()
+        result = await provider.test_connection(target)
+        if state.audit is not None:
+            state.audit.append(
+                "user",
+                "provider.test",
+                target=target,
+                decision="allow" if result.ok else "deny",
+                detail=f"{result.latency_ms}ms",
+            )
+        return {
+            "ok": result.ok,
+            "model": result.model,
+            "latency_ms": result.latency_ms,
+            "detail": result.detail,
+        }
+
+    @app.post("/api/privacy/acknowledge", dependencies=[guard])
+    async def privacy_acknowledge() -> dict[str, Any]:
+        state.update_settings({"privacy": {"notice_acknowledged": True}})
+        return state.settings.model_dump(mode="json")
+
     @app.post("/api/window/{action}", dependencies=[guard])
     async def window_action(action: str) -> dict[str, Any]:
         if action not in WINDOW_ACTIONS:
@@ -144,24 +170,108 @@ def create_app(state: CoreState, static_dir: Path | None = None) -> FastAPI:
         if not token_matches(websocket.query_params.get("token"), state.token):
             await websocket.close(code=WS_UNAUTHORIZED)
             return
+
         await websocket.accept()
-        await websocket.send_json(
-            {
-                "type": "hello",
-                "data": {
-                    "version": __version__,
-                    "settings": state.settings.model_dump(mode="json"),
-                },
-            }
-        )
+        sender = _Sender(websocket)
+        await sender.send({"type": "hello", "data": _hello_payload(state)})
+
+        tasks: set[asyncio.Task] = set()
+        current: dict[str, asyncio.Task | None] = {"chat": None}
+
+        def finish(task: asyncio.Task) -> None:
+            tasks.discard(task)
+            if current["chat"] is task:
+                current["chat"] = None
+            if task.cancelled():
+                return
+            error = task.exception()
+            if error is not None:
+                state.log.error("chat task failed: %s", error)
+
+        async def handle(message: dict) -> None:
+            kind = message.get("type")
+
+            if kind == "ping":
+                await sender.send({"type": "pong"})
+                return
+
+            if kind == "chat.send":
+                running = current["chat"]
+                if running is not None and not running.done():
+                    await sender.send(
+                        {
+                            "type": "chat.error",
+                            "data": {"kind": "busy", "message": "A reply is still streaming."},
+                        }
+                    )
+                    return
+                text = str(message.get("text") or "").strip()
+                if not text:
+                    await sender.send(
+                        {
+                            "type": "chat.error",
+                            "data": {"kind": "empty", "message": "Empty message."},
+                        }
+                    )
+                    return
+                if state.chat is None:
+                    await sender.send(
+                        {
+                            "type": "chat.error",
+                            "data": {"kind": "unavailable", "message": "Chat is not available."},
+                        }
+                    )
+                    return
+
+                task = asyncio.create_task(
+                    state.chat.handle(
+                        text,
+                        conversation_id=message.get("conversation_id"),
+                        emit=sender.send,
+                        model_override=message.get("model"),
+                    )
+                )
+                current["chat"] = task
+                tasks.add(task)
+                task.add_done_callback(finish)
+                return
+
+            if kind == "chat.cancel":
+                running = current["chat"]
+                if running is not None and not running.done():
+                    running.cancel()
+                await sender.send({"type": "chat.done", "data": {"aborted": True}})
+                return
+
+            if kind == "settings.update":
+                patch = message.get("patch") or {}
+                try:
+                    state.update_settings(patch)
+                except Exception as exc:
+                    await sender.send({"type": "settings.error", "data": {"message": str(exc)}})
+                    return
+                await sender.send(
+                    {"type": "settings", "data": state.settings.model_dump(mode="json")}
+                )
+                await sender.send({"type": "budget", "data": state.budget_status()})
+                return
+
+            await sender.send(
+                {"type": "error", "data": {"message": f"unknown message type: {kind!r}"}}
+            )
+
         try:
             while True:
-                message = await websocket.receive_json()
-                await _handle_message(websocket, state, message)
+                payload = await websocket.receive_json()
+                await handle(payload)
         except WebSocketDisconnect:
             state.log.info("UI websocket disconnected")
         except Exception:
             state.log.exception("websocket error")
+        finally:
+            sender.close()
+            for task in list(tasks):
+                task.cancel()
 
     if static_dir is not None and Path(static_dir).is_dir():
         app.mount("/", StaticFiles(directory=str(static_dir), html=True), name="ui")
@@ -171,7 +281,7 @@ def create_app(state: CoreState, static_dir: Path | None = None) -> FastAPI:
         async def missing_ui() -> dict[str, Any]:
             return {
                 "error": "UI bundle not found",
-                "hint": "cd ui/web && npm install && npm run build",
+                "hint": "cd ui/web && npm install --include=dev && npm run build",
             }
 
     return app

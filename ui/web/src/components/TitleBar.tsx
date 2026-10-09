@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
 
+import { formatCost } from '../lib/format';
 import { windowAction } from '../lib/api';
 import { useCore } from '../state/core';
 import { CloseIcon, MaximizeIcon, MinimizeIcon, RestoreIcon } from './icons';
@@ -12,7 +13,7 @@ declare global {
 }
 
 export function TitleBar() {
-  const { connection, settings } = useCore();
+  const { connection, settings, budget } = useCore();
   const [maximized, setMaximized] = useState(false);
 
   useEffect(() => {
@@ -44,17 +45,24 @@ export function TitleBar() {
 
       <div className="titlebar__spacer" />
 
+      {budget ? (
+        <div className={`meter ${budget.allowed ? '' : 'meter--blocked'}`} title={budget.reason}>
+          <span className="meter__value">
+            {formatCost(budget.today_usd)} / {formatCost(budget.daily_limit)}
+          </span>
+          <span className="meter__label">
+            today · month {formatCost(budget.month_usd)}
+          </span>
+        </div>
+      ) : null}
+
       <div className="titlebar__status">
         <span className={`dot ${connection === 'open' ? 'dot--live' : ''}`} />
         <span className="pill">{connection === 'open' ? 'CORE ONLINE' : connection}</span>
-        {settings ? <span className="pill">{settings.models.fast}</span> : null}
+        {settings ? <span className="pill">{settings.provider.name}</span> : null}
       </div>
 
-      <div
-        className="titlebar__buttons"
-        onMouseDown={stop}
-        onDoubleClick={stop}
-      >
+      <div className="titlebar__buttons" onMouseDown={stop} onDoubleClick={stop}>
         <button
           className="titlebar__btn"
           aria-label="Minimize"

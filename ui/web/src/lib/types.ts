@@ -27,14 +27,37 @@ export interface ModelSettings {
   routing: 'auto' | 'fast' | 'strong';
 }
 
+export interface ProviderSettings {
+  name: 'gemini' | 'mock';
+  proxy_mode: 'bypass' | 'system' | 'manual';
+  proxy_url: string;
+  timeout_seconds: number;
+  max_retries: number;
+  tools_enabled: boolean;
+  context_window_messages: number;
+  summarize_after_messages: number;
+}
+
+export interface PricingSettings {
+  tier: 'free' | 'paid';
+}
+
+export interface PrivacySettings {
+  notice_acknowledged: boolean;
+  remind_before_attach: boolean;
+}
+
+export interface LimitSettings {
+  enabled: boolean;
+  daily_usd: number;
+  monthly_usd: number;
+  hard_stop: boolean;
+}
+
 export interface VoiceSettings {
   tts_provider: string;
-  tts_model: string;
-  tts_fallback_model: string;
   stt_engine: string;
-  stt_model: string;
   language: string;
-  wake_word_enabled: boolean;
 }
 
 export interface Settings {
@@ -45,13 +68,16 @@ export interface Settings {
   api: { host: string; port: number };
   models: ModelSettings;
   voice: VoiceSettings;
-  limits: { daily_usd: number; monthly_usd: number; hard_stop: boolean };
+  limits: LimitSettings;
   security: {
     allowed_folders: string[];
     allowed_apps: string[];
     allowed_domains: string[];
     allowed_commands: string[];
   };
+  provider: ProviderSettings;
+  pricing: PricingSettings;
+  privacy: PrivacySettings;
 }
 
 export interface SecretStatus {
@@ -73,8 +99,43 @@ export interface Diagnostics {
   paths: Record<string, unknown>;
   settings: Record<string, unknown>;
   secrets: Record<string, unknown>;
+  provider?: Record<string, unknown>;
+  network?: Record<string, unknown>;
+  pricing?: Record<string, unknown>;
+  tools?: string[];
+  budget?: Record<string, unknown>;
   warnings: string[];
   core?: Record<string, unknown>;
+}
+
+export interface BudgetStatus {
+  allowed: boolean;
+  reason: string;
+  today_usd: number;
+  month_usd: number;
+  daily_limit: number;
+  monthly_limit: number;
+  hard_stop: boolean;
+  requests_today: number;
+  tokens_today: number;
+  unknown_cost_today: number;
+}
+
+export interface ToolCallView {
+  name: string;
+  args: Record<string, unknown>;
+  status: string;
+  detail: string;
+  ms: number;
+}
+
+export interface UsageInfo {
+  inputTokens: number;
+  outputTokens: number;
+  thoughtsTokens: number;
+  costUsd: number | null;
+  costKnown: boolean;
+  tier: string;
 }
 
 export interface ChatMessage {
@@ -82,6 +143,19 @@ export interface ChatMessage {
   role: 'user' | 'assistant';
   text: string;
   model?: string;
+  tier?: string;
+  reason?: string;
   streaming?: boolean;
   error?: boolean;
+  errorKind?: string;
+  local?: boolean;
+  tools?: ToolCallView[];
+  usage?: UsageInfo;
+}
+
+export interface ConnectionTest {
+  ok: boolean;
+  model: string;
+  latency_ms: number;
+  detail: string;
 }
