@@ -5,7 +5,6 @@ import {
   AgentsIcon,
   CodingIcon,
   MemoryIcon,
-  SystemIcon,
   TasksIcon,
   WorldIcon,
 } from './components/icons';
@@ -13,6 +12,7 @@ import { ChatPanel } from './panels/ChatPanel';
 import { HomePanel } from './panels/HomePanel';
 import { Placeholder } from './panels/Placeholder';
 import { SettingsPanel } from './panels/SettingsPanel';
+import { SystemPanel } from './panels/SystemPanel';
 import { useCore } from './state/core';
 import type { PanelId } from './lib/types';
 
@@ -52,12 +52,6 @@ const PLACEHOLDERS: Partial<
     text: 'A 3D globe with hotspot markers, a 2D map view and a headlines feed from your editable free RSS sources.',
     Icon: WorldIcon,
   },
-  system: {
-    title: 'System',
-    phase: 8,
-    text: 'CPU, RAM, disk, battery and network gauges, running applications, and NOVA’s own resource usage.',
-    Icon: SystemIcon,
-  },
 };
 
 export function App() {
@@ -74,6 +68,7 @@ export function App() {
           {panel === 'home' ? <HomePanel /> : null}
           {panel === 'chat' ? <ChatPanel /> : null}
           {panel === 'settings' ? <SettingsPanel /> : null}
+          {panel === 'system' ? <SystemPanel /> : null}
           {placeholder ? <Placeholder {...placeholder} /> : null}
         </main>
       </div>

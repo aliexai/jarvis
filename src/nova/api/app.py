@@ -117,6 +117,12 @@ def create_app(state: CoreState, static_dir: Path | None = None) -> FastAPI:
     async def get_brain() -> dict[str, Any]:
         return state.brain_status()
 
+    @app.get("/api/system", dependencies=[guard])
+    async def get_system() -> dict[str, Any]:
+        from nova.system import snapshot
+
+        return snapshot()
+
     @app.get("/api/voice/devices", dependencies=[guard])
     async def voice_devices() -> dict[str, Any]:
         from nova.voice.devices import input_available, list_input_devices, sound_available

@@ -7,6 +7,7 @@ import type {
   SecretsResponse,
   SecretStatus,
   Settings,
+  SystemSnapshot,
   ThemeName,
   VoiceDevices,
 } from './types';
@@ -60,6 +61,10 @@ export function getBrain(): Promise<BrainStatus> {
 
 export function getVoiceDevices(): Promise<VoiceDevices> {
   return request<VoiceDevices>('/api/voice/devices');
+}
+
+export function getSystem(): Promise<SystemSnapshot> {
+  return request<SystemSnapshot>('/api/system');
 }
 
 export interface SecretWriteResult {

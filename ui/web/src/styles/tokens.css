@@ -10,13 +10,17 @@
   --panel-solid: #0a1120;
 
   /* Text */
-  --text: #e8eff8;
-  --text-dim: #94a4b9;
-  --text-faint: #61708a;
+  --text: #eaf1fa;
+  --text-dim: #a2b2c8;
+  --text-faint: #6f8098;
 
   /* Lines */
   --line: rgba(148, 163, 184, 0.14);
-  --line-strong: rgba(148, 163, 184, 0.28);
+  --line-strong: rgba(148, 163, 184, 0.30);
+
+  /* Elevation */
+  --shadow-1: 0 1px 0 rgba(255, 255, 255, 0.03), 0 10px 28px -20px rgba(0, 0, 0, 0.9);
+  --shadow-2: 0 28px 70px -36px rgba(0, 0, 0, 0.95);
 
   /* 8px spacing grid */
   --space-1: 4px;

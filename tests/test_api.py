@@ -264,6 +264,13 @@ def test_voice_devices_reports_availability(client):
     assert isinstance(body["devices"], list)
 
 
+def test_system_snapshot_shape(client):
+    body = client.get(f"/api/system?token={TOKEN}").json()
+    assert "available" in body
+    if body["available"]:
+        assert "cpu" in body and "memory" in body
+
+
 def test_hello_includes_brain(client):
     with client.websocket_connect(f"/ws?token={TOKEN}") as websocket:
         hello = websocket.receive_json()

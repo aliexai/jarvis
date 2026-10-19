@@ -738,3 +738,69 @@ select.input {
   border-color: rgba(251, 191, 36, 0.45);
   background: rgba(251, 191, 36, 0.08);
 }
+
+/* ---- System gauges --------------------------------------------------- */
+.gauges {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-3);
+}
+
+.gauge {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+}
+
+.gauge__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.gauge__label {
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gauge__value {
+  font-family: var(--font-mono);
+  font-size: var(--text-md);
+  color: var(--text);
+}
+
+.gauge__bar {
+  height: 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(4, 8, 16, 0.6);
+  overflow: hidden;
+}
+
+.gauge__fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent-soft), var(--accent));
+  transition: width var(--dur-3) var(--ease);
+}
+
+.gauge__fill--hot {
+  background: linear-gradient(90deg, rgba(251, 191, 36, 0.5), #f87171);
+}
+
+.gauge__detail {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-faint);
+}

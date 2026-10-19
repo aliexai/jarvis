@@ -626,7 +626,6 @@ export function CoreProvider({ children }: { children: ReactNode }) {
       voiceState,
       voiceLevel,
       voiceTranscript,
-      voiceActive: voiceState === 'listening',
       startVoice,
       stopVoice,
       panel,

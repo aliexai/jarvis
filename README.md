@@ -7,10 +7,12 @@ NOVA talks to you, remembers you, and controls your PC through safe, explicitly
 approved tools. It is built to run comfortably on an 8 GB machine with
 integrated graphics.
 
-> Status: **Phase 3 complete** — the Gemini brain: real streaming over the local
-> API with cancel, model routing, function calling, conversation summaries,
-> JSON-mode output, cost metering and safe network/proxy handling. Voice
-> follows in Phase 4.
+> Status: **Phase 4 complete** — real voice. Push-to-talk microphone capture,
+> local Whisper speech-to-text and spoken replies (ElevenLabs when a key is set,
+> offline Windows SAPI otherwise), all driven from the Home screen and reflected
+> in the orb. Chat also now works out of the box: a first-run card lets you paste
+> a Gemini key in-app or switch to a clearly-labelled demo mode, and a live
+> **System** panel reports CPU, memory, disk and battery.
 
 ---
 
@@ -97,6 +99,12 @@ audit log redacts its stored fields too. `nova diag` reports where each secret
 came from, whether its provider prefix looks right, and any ignored legacy
 variables — never any key characters.
 
+You can paste a key straight into the app (Settings → API keys, or the first-run
+card in Chat) and it is written to Windows Credential Manager; the value is never
+echoed back. With no key you can still use **demo mode**, which answers from the
+built-in mock provider and labels every reply as demo — canned text, no network,
+no cost.
+
 | Secret | Where to get it |
 |---|---|
 | `NOVA_GEMINI_API_KEY` | https://aistudio.google.com/apikey (format `AIza…`) |
@@ -111,6 +119,7 @@ src/nova/
   security/     policy engine + allowlists, secret store, redaction, audit log
   providers/    vendor-neutral LLM interface, Gemini + mock, routing, pricing
   chat/         context window + summaries, the streaming chat pipeline
+  voice/        microphone capture, faster-whisper STT, ElevenLabs/SAPI TTS
   tools/        tool registry, JSON-schema validation, policy-gated executor
   memory/       SQLite (WAL): conversations, messages, summaries, usage
   api/          local FastAPI + WebSocket surface (auth, state, server)
@@ -185,6 +194,25 @@ Then run the live test, which is skipped when no key is configured:
 .venv\Scripts\python -m pytest tests\test_live_gemini.py -v
 ```
 
+## Voice
+
+Install the voice extra once:
+
+```powershell
+.\.venv\Scripts\python -m pip install -e ".[voice]"
+```
+
+On the **Home** screen, **Start** opens the microphone and puts the orb into
+listening (the orb pulses to the real input level). **Stop** ends the utterance,
+transcribes it locally with faster-whisper (the first use downloads the model),
+sends the text through the normal chat pipeline and speaks the reply. Replies use
+ElevenLabs when `NOVA_ELEVENLABS_API_KEY` and `NOVA_ELEVENLABS_VOICE_ID` are set,
+and the offline Windows SAPI voice otherwise. The explicit Start click is treated
+as consent to record and is written to the audit log; there is no extra prompt.
+
+Recorded audio is processed locally and never uploaded — only the transcribed
+text leaves the machine, exactly like a typed message.
+
 ## Performance
 
 Measured on this machine (Windows 11, i7-1355U, 7.5 GB RAM, Intel UHD):
@@ -224,6 +252,11 @@ Reproduce with `python scripts\measure_memory.py --seconds 14`.
 - **A SOCKS system proxy breaks the SDK** — on this machine the Windows proxy
   is `socks4://[::1]:9050`, which httpx cannot use. NOVA defaults to
   *bypass*; switch to *system* in Settings only if the proxy speaks http(s).
+- **A blank or white window, or one that never paints** — the graphics driver
+  could not host the web engine's compositor. Start NOVA with
+  `set NOVA_SOFTWARE_RENDER=1` to force software rendering; NOVA also retries the
+  page load and offers to open the interface in a browser if it never becomes
+  ready.
 - **`UI bundle not found`** when launching — build the front-end (`cd ui\web &&
   npm install --include=dev && npm run build`).
 - **`npm run build` fails with "tsc is not recognized"** — if `NODE_ENV=production`
@@ -240,8 +273,9 @@ Reproduce with `python scripts\measure_memory.py --seconds 14`.
 
 ## Roadmap
 
-Done: skeleton & security (1) · Command Center shell (2) · Gemini brain (3).
-Next: **Phase 4 voice** · Phase 5 PC-control tools · Phase 6 coding agent ·
+Done: skeleton & security (1) · Command Center shell (2) · Gemini brain (3) ·
+**voice (4)**.
+Next: Phase 5 PC-control tools · Phase 6 coding agent ·
 Phase 7 memory & Agent Town · Phase 8 world monitor, system panel, mini mode ·
 Phase 9 packaging & hardening.
 #   j a r v i s  

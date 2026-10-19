@@ -15,7 +15,7 @@ export function Placeholder({
     <section className="panel">
       <header className="panel__head">
         <h1 className="panel__title">{title}</h1>
-        <span className="panel__sub">Coming in Phase {phase}</span>
+        <span className="panel__sub">Planned for a later phase</span>
       </header>
       <div className="placeholder">
         <div className="placeholder__inner">

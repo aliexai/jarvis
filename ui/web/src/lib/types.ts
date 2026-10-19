@@ -114,6 +114,16 @@ export interface VoiceDevices {
   devices: VoiceDevice[];
 }
 
+export interface SystemSnapshot {
+  available: boolean;
+  reason?: string;
+  cpu?: { percent: number; count: number };
+  memory?: { total: number; used: number; percent: number };
+  disks?: { mount: string; total: number; used: number; percent: number }[];
+  battery?: { percent: number; plugged: boolean } | null;
+  nova?: { rss: number; children: number };
+}
+
 export interface SecretsResponse {
   keyring_available: boolean;
   secrets: Record<string, SecretStatus>;

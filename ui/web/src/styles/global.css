@@ -111,6 +111,7 @@ button {
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   backdrop-filter: blur(14px);
+  box-shadow: var(--shadow-1);
 }
 
 .btn {
