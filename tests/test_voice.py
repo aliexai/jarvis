@@ -43,6 +43,27 @@ class FailingCapture:
         return []
 
 
+class ScriptedCapture:
+    """Returns a fixed sequence of levels, one per poll."""
+
+    def __init__(self, levels: list[float]) -> None:
+        self._levels = list(levels)
+        self._index = 0
+        self.stopped = False
+
+    def start(self) -> None:
+        return None
+
+    def level(self) -> float:
+        value = self._levels[min(self._index, len(self._levels) - 1)]
+        self._index += 1
+        return value
+
+    def stop(self) -> list[float]:
+        self.stopped = True
+        return [0.0] * 1600
+
+
 class FakeTranscriber:
     def __init__(self, text: str = "hello nova", *, fail: bool = False) -> None:
         self.text = text
@@ -189,6 +210,31 @@ async def test_cancel_stops_capture():
     await service.cancel()
     assert service.listening is False
     assert capture.stopped is True
+
+
+async def test_listening_auto_stops_after_a_pause():
+    chat = FakeChat(reply="ok")
+    capture = ScriptedCapture([0.5, 0.5, 0.6, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+    service = VoiceService(
+        chat=lambda: chat,
+        capture_factory=lambda: capture,
+        transcriber=FakeTranscriber("hello there"),
+        speaker=FakeSpeaker(),
+        silence_seconds=0.15,
+        min_speech_seconds=0.1,
+    )
+    events: list[dict] = []
+
+    async def emit(payload: dict) -> None:
+        events.append(payload)
+
+    await service.start(emit)
+    await asyncio.sleep(1.0)
+
+    # No explicit stop() call: the pause ended the turn on its own.
+    assert chat.calls == ["hello there"]
+    assert capture.stopped is True
+    assert any(e["type"] == "voice.transcript" for e in events)
 
 
 def test_device_discovery_never_raises():

@@ -203,12 +203,14 @@ Install the voice extra once:
 ```
 
 On the **Home** screen, **Start** opens the microphone and puts the orb into
-listening (the orb pulses to the real input level). **Stop** ends the utterance,
-transcribes it locally with faster-whisper (the first use downloads the model),
-sends the text through the normal chat pipeline and speaks the reply. Replies use
-ElevenLabs when `NOVA_ELEVENLABS_API_KEY` and `NOVA_ELEVENLABS_VOICE_ID` are set,
-and the offline Windows SAPI voice otherwise. The explicit Start click is treated
-as consent to record and is written to the audit log; there is no extra prompt.
+listening (the orb pulses to the real input level). Say something and pause —
+NOVA detects the silence, ends the utterance on its own and replies. **Stop**
+still ends it immediately at any time. The speech is transcribed locally with
+faster-whisper (the first use downloads the model), sent through the normal chat
+pipeline and the reply is spoken. Replies use ElevenLabs when
+`NOVA_ELEVENLABS_API_KEY` and `NOVA_ELEVENLABS_VOICE_ID` are set, and the offline
+Windows SAPI voice otherwise. The explicit Start click is treated as consent to
+record and is written to the audit log; there is no extra prompt.
 
 Recorded audio is processed locally and never uploaded — only the transcribed
 text leaves the machine, exactly like a typed message.

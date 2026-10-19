@@ -91,7 +91,7 @@ export function HomePanel() {
                 <span className="line__text">
                   {noMic
                     ? 'No microphone found. Open Chat to type a message instead.'
-                    : 'Press Start and speak, or open Chat and type a message.'}
+                    : 'Press Start and speak — NOVA stops listening when you pause.'}
                 </span>
               </div>
             ) : (

@@ -14,11 +14,21 @@ from nova.providers.gemini import GeminiProvider
 from nova.security.secrets import GEMINI_API_KEY, SecretStore
 
 # Resolved at import time, before the per-test environment isolation runs.
-_KEY = SecretStore().get(GEMINI_API_KEY)
+_RESOLVED = SecretStore().resolve(GEMINI_API_KEY)
+_KEY = _RESOLVED.value
+_KEY_LOOKS_VALID = _RESOLVED.prefix_check()[0]
 
-pytestmark = pytest.mark.skipif(
-    not _KEY, reason="NOVA_GEMINI_API_KEY is not set; live test skipped"
-)
+if not _KEY:
+    _SKIP_REASON = "NOVA_GEMINI_API_KEY is not set; live test skipped"
+elif not _KEY_LOOKS_VALID:
+    _SKIP_REASON = (
+        "NOVA_GEMINI_API_KEY does not look like a Gemini key (expected an 'AIza...' "
+        "prefix); live test skipped"
+    )
+else:
+    _SKIP_REASON = None
+
+pytestmark = pytest.mark.skipif(bool(_SKIP_REASON), reason=_SKIP_REASON or "")
 
 LIVE_MODEL = "gemini-3.5-flash-lite"
 

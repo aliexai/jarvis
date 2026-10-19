@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import time
 from collections.abc import Awaitable, Callable
 from enum import StrEnum
 from typing import Any
@@ -30,7 +31,11 @@ class VoiceState(StrEnum):
 
 
 class VoiceService:
-    """Coordinates capture, transcription, the chat pipeline and playback."""
+    """Coordinates capture, transcription, the chat pipeline and playback.
+
+    Listening ends automatically once the speaker has said something and then
+    paused, so a single press of Start is enough; Stop still works at any time.
+    """
 
     def __init__(
         self,
@@ -39,11 +44,21 @@ class VoiceService:
         capture_factory: Callable[[], Any],
         transcriber: Any,
         speaker: Any,
+        auto_stop: bool = True,
+        silence_level: float = 0.06,
+        silence_seconds: float = 1.2,
+        min_speech_seconds: float = 0.3,
+        max_seconds: float = 20.0,
     ) -> None:
         self._chat = chat
         self._capture_factory = capture_factory
         self._transcriber = transcriber
         self._speaker = speaker
+        self._auto_stop = auto_stop
+        self._silence_level = silence_level
+        self._silence_seconds = silence_seconds
+        self._min_speech_seconds = min_speech_seconds
+        self._max_seconds = max_seconds
         self._log = get_logger("voice")
         self._capture: Any | None = None
         self._level_task: asyncio.Task | None = None
@@ -83,10 +98,30 @@ class VoiceService:
             self._level_task = asyncio.create_task(self._pump_levels(capture, emit))
 
     async def _pump_levels(self, capture: Any, emit: Emit) -> None:
+        started = time.monotonic()
+        spoke_at: float | None = None
+        last_loud = started
         try:
             while True:
                 await asyncio.sleep(_LEVEL_INTERVAL)
-                await emit({"type": "voice.level", "data": {"level": round(capture.level(), 3)}})
+                level = capture.level()
+                now = time.monotonic()
+                await emit({"type": "voice.level", "data": {"level": round(level, 3)}})
+                if not self._auto_stop:
+                    continue
+
+                if level >= self._silence_level:
+                    last_loud = now
+                    if spoke_at is None:
+                        spoke_at = now
+
+                heard = spoke_at is not None and (now - spoke_at) >= self._min_speech_seconds
+                paused = (now - last_loud) >= self._silence_seconds
+                if (heard and paused) or (now - started) >= self._max_seconds:
+                    # Finish the turn without deadlocking the pump: hand off to
+                    # a fresh task and let the pump end.
+                    asyncio.create_task(self.stop(emit))
+                    return
         except asyncio.CancelledError:
             raise
         except Exception:
