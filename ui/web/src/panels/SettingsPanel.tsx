@@ -108,9 +108,15 @@ export function SettingsPanel() {
     setReduceMotion,
     updateSettings,
     runConnectionTest,
+    brain,
+    saveKey,
+    removeKey,
   } = useCore();
 
   const [testModel, setTestModel] = useState('');
+  const [keyDraft, setKeyDraft] = useState('');
+  const [keyBusy, setKeyBusy] = useState(false);
+  const [keyError, setKeyError] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<
     { ok: boolean; model: string; latency_ms: number; detail: string } | null
   >(null);
@@ -143,6 +149,21 @@ export function SettingsPanel() {
       setTestResult({ ok: false, model: effectiveTestModel, latency_ms: 0, detail: 'request failed' });
     } finally {
       setTesting(false);
+    }
+  };
+
+  const onSaveKey = async () => {
+    const value = keyDraft.trim();
+    if (!value) return;
+    setKeyBusy(true);
+    setKeyError(null);
+    try {
+      await saveKey(value);
+      setKeyDraft('');
+    } catch (err) {
+      setKeyError(err instanceof Error ? err.message : 'Could not store the key.');
+    } finally {
+      setKeyBusy(false);
     }
   };
 
@@ -514,6 +535,49 @@ export function SettingsPanel() {
             </span>
           </div>
 
+          <div className="row">
+            <div className="row__label">
+              <span>Gemini API key</span>
+              <span className="row__hint">
+                {brain?.mode === 'live'
+                  ? 'Live — the brain is connected.'
+                  : 'Saved to Windows Credential Manager; never displayed again.'}
+              </span>
+            </div>
+            <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
+              <span className={`pill ${brain?.mode === 'live' ? 'pill--ok' : 'pill--warn'}`}>
+                {brain?.mode ?? 'unknown'}
+              </span>
+              <input
+                className="input"
+                type="password"
+                value={keyDraft}
+                placeholder="AIza…"
+                autoComplete="off"
+                spellCheck={false}
+                aria-label="Gemini API key"
+                onChange={(event) => setKeyDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') void onSaveKey();
+                }}
+              />
+              <button
+                type="button"
+                className="btn"
+                onClick={() => void onSaveKey()}
+                disabled={keyBusy || !keyDraft.trim()}
+              >
+                {keyBusy ? 'Saving…' : 'Save'}
+              </button>
+              {brain?.has_gemini_key ? (
+                <button type="button" className="btn btn--ghost" onClick={() => void removeKey()}>
+                  Remove
+                </button>
+              ) : null}
+            </div>
+          </div>
+          {keyError ? <p className="row__hint">{keyError}</p> : null}
+
           {secretEntries.map(([name, status]) => (
             <div className="row" key={name}>
               <div className="row__label">
@@ -527,8 +591,8 @@ export function SettingsPanel() {
             </div>
           ))}
           <p className="row__hint">
-            Key values are never displayed. To add or replace a key, put it in a local{' '}
-            <span className="mono">.env</span> file or Windows Credential Manager.
+            Key values are never displayed after saving, never logged, and never leave your
+            machine except to the provider.
           </p>
         </div>
 

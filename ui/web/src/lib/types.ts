@@ -86,6 +86,34 @@ export interface SecretStatus {
   prefix_ok: boolean;
 }
 
+export interface BrainStatus {
+  mode: 'live' | 'demo' | 'needs_key';
+  provider: 'gemini' | 'mock';
+  has_gemini_key: boolean;
+  has_elevenlabs_key: boolean;
+}
+
+export type VoiceState =
+  | 'idle'
+  | 'listening'
+  | 'transcribing'
+  | 'thinking'
+  | 'speaking'
+  | 'error';
+
+export interface VoiceDevice {
+  index: number;
+  name: string;
+  channels: number;
+  default: boolean;
+}
+
+export interface VoiceDevices {
+  sound_available: boolean;
+  available: boolean;
+  devices: VoiceDevice[];
+}
+
 export interface SecretsResponse {
   keyring_available: boolean;
   secrets: Record<string, SecretStatus>;

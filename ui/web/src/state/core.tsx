@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 
 import * as api from '../lib/api';
 import type {
+  BrainStatus,
   BudgetStatus,
   ChatMessage,
   ConnectionState,
@@ -14,7 +15,16 @@ import type {
   Settings,
   ThemeName,
   ToolCallView,
+  VoiceState,
 } from '../lib/types';
+
+const GEMINI_KEY_NAME = 'NOVA_GEMINI_API_KEY';
+
+function voiceOrbState(state: VoiceState): OrbState {
+  if (state === 'transcribing') return 'thinking';
+  if (state === 'error') return 'error';
+  return state as OrbState;
+}
 
 interface CoreValue {
   connection: ConnectionState;
@@ -23,11 +33,18 @@ interface CoreValue {
   keyringAvailable: boolean;
   diagnostics: Diagnostics | null;
   budget: BudgetStatus | null;
+  brain: BrainStatus | null;
   tools: string[];
   pricing: { tier: string; last_checked: string; source: string } | null;
   messages: ChatMessage[];
   streaming: boolean;
   orbState: OrbState;
+  voiceState: VoiceState;
+  voiceLevel: number;
+  voiceTranscript: string;
+  voiceActive: boolean;
+  startVoice: () => void;
+  stopVoice: () => void;
   panel: PanelId;
   theme: ThemeName;
   accent: string;
@@ -47,6 +64,9 @@ interface CoreValue {
   clearChat: () => void;
   refreshDiagnostics: () => void;
   refreshUsage: () => void;
+  saveKey: (value: string) => Promise<void>;
+  removeKey: () => Promise<void>;
+  enableDemo: () => Promise<void>;
   runConnectionTest: (model?: string) => Promise<ConnectionTest>;
   acknowledgePrivacy: () => Promise<void>;
 }
@@ -75,11 +95,15 @@ export function CoreProvider({ children }: { children: ReactNode }) {
   const [keyringAvailable, setKeyringAvailable] = useState(false);
   const [diagnostics, setDiagnostics] = useState<Diagnostics | null>(null);
   const [budget, setBudget] = useState<BudgetStatus | null>(null);
+  const [brain, setBrain] = useState<BrainStatus | null>(null);
   const [tools, setTools] = useState<string[]>([]);
   const [pricing, setPricing] = useState<CoreValue['pricing']>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [streaming, setStreaming] = useState(false);
   const [orbState, setOrbState] = useState<OrbState>('idle');
+  const [voiceState, setVoiceState] = useState<VoiceState>('idle');
+  const [voiceLevel, setVoiceLevel] = useState(0);
+  const [voiceTranscript, setVoiceTranscript] = useState('');
   const [panel, setPanel] = useState<PanelId>(api.INITIAL_PANEL ?? 'home');
   const [theme, setThemeState] = useState<ThemeName>(api.INITIAL_THEME ?? 'cyan');
   const [accent, setAccentState] = useState('');
@@ -125,14 +149,16 @@ export function CoreProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     void (async () => {
       try {
-        const [loadedSettings, loadedSecrets] = await Promise.all([
+        const [loadedSettings, loadedSecrets, loadedBrain] = await Promise.all([
           api.getSettings(),
           api.getSecrets(),
+          api.getBrain(),
         ]);
         if (cancelled) return;
         applySettings(loadedSettings, true);
         setSecrets(loadedSecrets.secrets);
         setKeyringAvailable(loadedSecrets.keyring_available);
+        setBrain(loadedBrain);
       } catch {
         // Connection badge reflects the failure; defaults stay in place.
       }
@@ -159,12 +185,44 @@ export function CoreProvider({ children }: { children: ReactNode }) {
         case 'hello':
           if (data?.settings) applySettings(data.settings as Settings, false);
           if (data?.budget) setBudget(data.budget as BudgetStatus);
+          if (data?.brain) setBrain(data.brain as BrainStatus);
           if (data?.tools) setTools(data.tools as string[]);
           if (data?.pricing) setPricing(data.pricing as CoreValue['pricing']);
           break;
 
         case 'orb.state':
           if (data?.state) setOrbState(data.state as OrbState);
+          break;
+
+        case 'voice.state': {
+          const next = String(data?.state ?? 'idle') as VoiceState;
+          setVoiceState(next);
+          setOrbState(voiceOrbState(next));
+          break;
+        }
+
+        case 'voice.level':
+          setVoiceLevel(Number(data?.level ?? 0));
+          break;
+
+        case 'voice.transcript':
+          setVoiceTranscript(String(data?.text ?? ''));
+          break;
+
+        case 'voice.error':
+          setVoiceState('error');
+          setMessages((prev) =>
+            [
+              ...prev,
+              {
+                id: `err-${Date.now()}`,
+                role: 'assistant' as const,
+                text: String(data?.message ?? 'Voice error.'),
+                error: true,
+                errorKind: String(data?.kind ?? 'voice'),
+              },
+            ].slice(-MAX_MESSAGES),
+          );
           break;
 
         case 'chat.start':
@@ -287,6 +345,10 @@ export function CoreProvider({ children }: { children: ReactNode }) {
           setBudget(data as BudgetStatus);
           break;
 
+        case 'brain':
+          setBrain(data as BrainStatus);
+          break;
+
         case 'settings.error':
           setMessages((prev) =>
             [
@@ -348,12 +410,36 @@ export function CoreProvider({ children }: { children: ReactNode }) {
       try {
         applySettings(await api.putSettings(patch), false);
         api.getUsage().then((usage) => setBudget(usage.budget)).catch(() => undefined);
+        api.getBrain().then(setBrain).catch(() => undefined);
       } catch {
         /* keep local state; the next change will retry */
       }
     },
     [applySettings],
   );
+
+  const saveKey = useCallback(
+    async (value: string) => {
+      const result = await api.setSecret(GEMINI_KEY_NAME, value.trim());
+      setSecrets(result.secrets);
+      setBrain(result.brain);
+      applySettings(result.settings, false);
+      if (result.settings.provider.name !== 'gemini') {
+        await persist({ provider: { name: 'gemini' } });
+      }
+    },
+    [applySettings, persist],
+  );
+
+  const removeKey = useCallback(async () => {
+    const result = await api.deleteSecret(GEMINI_KEY_NAME);
+    setSecrets(result.secrets);
+    setBrain(result.brain);
+  }, []);
+
+  const enableDemo = useCallback(async () => {
+    await persist({ provider: { name: 'mock' } });
+  }, [persist]);
 
   const setTheme = useCallback(
     (next: ThemeName) => {
@@ -425,6 +511,21 @@ export function CoreProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const startVoice = useCallback(() => {
+    const socket = socketRef.current;
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      setVoiceTranscript('');
+      socket.send(JSON.stringify({ type: 'voice.start' }));
+    }
+  }, []);
+
+  const stopVoice = useCallback(() => {
+    const socket = socketRef.current;
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({ type: 'voice.stop' }));
+    }
+  }, []);
+
   const clearChat = useCallback(() => {
     setMessages([]);
     setConversationId(null);
@@ -472,11 +573,18 @@ export function CoreProvider({ children }: { children: ReactNode }) {
       keyringAvailable,
       diagnostics,
       budget,
+      brain,
       tools,
       pricing,
       messages,
       streaming,
       orbState,
+      voiceState,
+      voiceLevel,
+      voiceTranscript,
+      voiceActive: voiceState === 'listening',
+      startVoice,
+      stopVoice,
       panel,
       theme,
       accent,
@@ -496,6 +604,9 @@ export function CoreProvider({ children }: { children: ReactNode }) {
       clearChat,
       refreshDiagnostics,
       refreshUsage,
+      saveKey,
+      removeKey,
+      enableDemo,
       runConnectionTest,
       acknowledgePrivacy,
     }),
@@ -506,11 +617,18 @@ export function CoreProvider({ children }: { children: ReactNode }) {
       keyringAvailable,
       diagnostics,
       budget,
+      brain,
       tools,
       pricing,
       messages,
       streaming,
       orbState,
+      voiceState,
+      voiceLevel,
+      voiceTranscript,
+      voiceActive: voiceState === 'listening',
+      startVoice,
+      stopVoice,
       panel,
       theme,
       accent,
@@ -528,6 +646,9 @@ export function CoreProvider({ children }: { children: ReactNode }) {
       clearChat,
       refreshDiagnostics,
       refreshUsage,
+      saveKey,
+      removeKey,
+      enableDemo,
       runConnectionTest,
       acknowledgePrivacy,
     ],

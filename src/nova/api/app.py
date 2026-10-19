@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,8 @@ from fastapi.staticfiles import StaticFiles
 from nova import __version__
 from nova.api.auth import make_guard, token_matches
 from nova.api.state import CoreState
+from nova.errors import SecretError
+from nova.security.policy import Decision, Permission
 
 WINDOW_ACTIONS = frozenset({"minimize", "toggle-maximize", "close", "start-move"})
 WS_UNAUTHORIZED = 4401
@@ -43,6 +46,7 @@ def _hello_payload(state: CoreState) -> dict[str, Any]:
         "version": __version__,
         "settings": state.settings.model_dump(mode="json"),
         "budget": state.budget_status(),
+        "brain": state.brain_status(),
         "tools": state.registry.names() if state.registry else [],
         "pricing": {
             "tier": state.settings.pricing.tier,
@@ -82,9 +86,55 @@ def create_app(state: CoreState, static_dir: Path | None = None) -> FastAPI:
             "secrets": state.secret_status(),
         }
 
+    @app.post("/api/secrets", dependencies=[guard])
+    async def put_secret(body: dict[str, Any]) -> dict[str, Any]:
+        try:
+            state.set_secret(str(body.get("name") or ""), str(body.get("value") or ""))
+        except SecretError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {
+            "secrets": state.secret_status(),
+            "brain": state.brain_status(),
+            "settings": state.settings.model_dump(mode="json"),
+        }
+
+    @app.delete("/api/secrets/{name}", dependencies=[guard])
+    async def remove_secret(name: str) -> dict[str, Any]:
+        try:
+            state.delete_secret(name)
+        except SecretError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {
+            "secrets": state.secret_status(),
+            "brain": state.brain_status(),
+        }
+
     @app.get("/api/diagnostics", dependencies=[guard])
     async def get_diagnostics() -> dict[str, Any]:
         return state.diagnostics()
+
+    @app.get("/api/brain", dependencies=[guard])
+    async def get_brain() -> dict[str, Any]:
+        return state.brain_status()
+
+    @app.get("/api/voice/devices", dependencies=[guard])
+    async def voice_devices() -> dict[str, Any]:
+        from nova.voice.devices import input_available, list_input_devices, sound_available
+
+        devices = list_input_devices()
+        return {
+            "sound_available": sound_available(),
+            "available": sound_available() and input_available(),
+            "devices": [
+                {
+                    "index": device.index,
+                    "name": device.name,
+                    "channels": device.channels,
+                    "default": device.default,
+                }
+                for device in devices
+            ],
+        }
 
     @app.get("/api/usage", dependencies=[guard])
     async def get_usage() -> dict[str, Any]:
@@ -177,6 +227,13 @@ def create_app(state: CoreState, static_dir: Path | None = None) -> FastAPI:
 
         tasks: set[asyncio.Task] = set()
         current: dict[str, asyncio.Task | None] = {"chat": None}
+        voice_box: dict[str, Any] = {"svc": None}
+        voice_task: dict[str, asyncio.Task | None] = {"run": None}
+
+        def ensure_voice() -> Any:
+            if voice_box["svc"] is None:
+                voice_box["svc"] = state.make_voice_service()
+            return voice_box["svc"]
 
         def finish(task: asyncio.Task) -> None:
             tasks.discard(task)
@@ -243,6 +300,38 @@ def create_app(state: CoreState, static_dir: Path | None = None) -> FastAPI:
                 await sender.send({"type": "chat.done", "data": {"aborted": True}})
                 return
 
+            if kind == "voice.start":
+                gate = state.policy.check(Permission.AUDIO_RECORD) if state.policy else None
+                if gate is not None and gate.decision is Decision.DENY:
+                    await sender.send(
+                        {
+                            "type": "voice.error",
+                            "data": {"kind": "policy", "message": "Microphone access is denied."},
+                        }
+                    )
+                    return
+                # The explicit Start click is the user's consent to record.
+                if state.audit is not None:
+                    state.audit.append("user", "voice.record", decision="allow")
+                await ensure_voice().start(sender.send)
+                return
+
+            if kind == "voice.stop":
+                running = voice_task["run"]
+                if running is not None and not running.done():
+                    return
+                task = asyncio.create_task(ensure_voice().stop(sender.send))
+                voice_task["run"] = task
+                tasks.add(task)
+                task.add_done_callback(finish)
+                return
+
+            if kind == "voice.cancel":
+                service = voice_box["svc"]
+                if service is not None:
+                    await service.cancel()
+                return
+
             if kind == "settings.update":
                 patch = message.get("patch") or {}
                 try:
@@ -254,6 +343,7 @@ def create_app(state: CoreState, static_dir: Path | None = None) -> FastAPI:
                     {"type": "settings", "data": state.settings.model_dump(mode="json")}
                 )
                 await sender.send({"type": "budget", "data": state.budget_status()})
+                await sender.send({"type": "brain", "data": state.brain_status()})
                 return
 
             await sender.send(
@@ -270,6 +360,10 @@ def create_app(state: CoreState, static_dir: Path | None = None) -> FastAPI:
             state.log.exception("websocket error")
         finally:
             sender.close()
+            service = voice_box["svc"]
+            if service is not None:
+                with contextlib.suppress(Exception):
+                    await service.cancel()
             for task in list(tasks):
                 task.cancel()
 

@@ -12,6 +12,7 @@ from nova.budget import BudgetGuard
 from nova.chat.service import ChatService
 from nova.config import AppPaths, Settings, get_paths, load_settings, save_settings
 from nova.diagnostics import build_diagnostics
+from nova.errors import SecretError
 from nova.logging_setup import get_logger
 from nova.memory import ChatStore, Database, UsageStore
 from nova.net import resolve_proxy
@@ -26,7 +27,12 @@ from nova.providers.pricing import (
     load_price_table,
 )
 from nova.security import AuditLog, PolicyEngine, SecretStore
-from nova.security.secrets import GEMINI_API_KEY, KNOWN_SECRETS
+from nova.security.secrets import (
+    ELEVENLABS_API_KEY,
+    ELEVENLABS_VOICE_ID,
+    GEMINI_API_KEY,
+    KNOWN_SECRETS,
+)
 from nova.tools import ToolRegistry, demo_registry
 
 
@@ -225,6 +231,63 @@ class CoreState:
                 "prefix_ok": ok,
             }
         return status
+
+    # -- secrets -----------------------------------------------------------
+    def set_secret(self, name: str, value: str) -> None:
+        """Persist a secret and force the provider to pick it up immediately."""
+        if name not in KNOWN_SECRETS:
+            raise SecretError(f"unknown secret: {name}")
+        self.secrets.set(name, value)
+        self._provider = None
+        self._provider_signature = None
+        if self.audit is not None:
+            self.audit.append("user", "secret.update", target=name, decision="allow")
+
+    def delete_secret(self, name: str) -> None:
+        """Remove a stored secret and rebuild the provider."""
+        if name not in KNOWN_SECRETS:
+            raise SecretError(f"unknown secret: {name}")
+        self.secrets.delete(name)
+        self._provider = None
+        self._provider_signature = None
+        if self.audit is not None:
+            self.audit.append("user", "secret.delete", target=name, decision="allow")
+
+    def make_voice_service(self) -> Any:
+        """Build a voice pipeline bound to the current settings and chat service."""
+        from nova.voice import VoiceService
+        from nova.voice.capture import MicCapture
+        from nova.voice.stt import Transcriber
+        from nova.voice.tts import Speaker
+
+        voice = self.settings.voice
+        return VoiceService(
+            chat=lambda: self.chat,
+            capture_factory=MicCapture,
+            transcriber=Transcriber(model_size=voice.stt_model, language=voice.language),
+            speaker=Speaker(
+                api_key=self.secrets.get(ELEVENLABS_API_KEY),
+                voice_id=self.secrets.get(ELEVENLABS_VOICE_ID),
+                provider=voice.tts_provider,
+            ),
+        )
+
+    def brain_status(self) -> dict:
+        """Whether chat can answer for real, run in demo mode, or needs a key."""
+        provider = self.settings.provider.name
+        has_gemini = self.secrets.has(GEMINI_API_KEY)
+        if provider == "mock":
+            mode = "demo"
+        elif has_gemini:
+            mode = "live"
+        else:
+            mode = "needs_key"
+        return {
+            "mode": mode,
+            "provider": provider,
+            "has_gemini_key": has_gemini,
+            "has_elevenlabs_key": self.secrets.has(ELEVENLABS_API_KEY),
+        }
 
     def close(self) -> None:
         """Release resources. Idempotent: safe to call from more than one path."""

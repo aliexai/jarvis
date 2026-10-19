@@ -14,7 +14,7 @@ from __future__ import annotations
 import ctypes
 from ctypes import wintypes
 
-from PySide6.QtCore import QEvent, QObject, Qt, QUrl, Signal
+from PySide6.QtCore import QEvent, QObject, Qt, QTimer, QUrl, Signal
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import QMainWindow
 
@@ -66,7 +66,33 @@ class MainWindow(QMainWindow):
         self._view = QWebEngineView(self)
         self._view.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
         self.setCentralWidget(self._view)
-        self._view.load(QUrl(server.ui_url(panel=panel, theme=theme, seed=seed, scroll=scroll)))
+
+        # A failed first paint must not leave an unrecoverable blank window.
+        self._ui_url = server.ui_url(panel=panel, theme=theme, seed=seed, scroll=scroll)
+        self._reloads = 0
+        self._view.loadFinished.connect(self._on_load_finished)
+        page = self._view.page()
+        if page is not None:
+            page.renderProcessTerminated.connect(self._on_render_terminated)
+        self._view.load(QUrl(self._ui_url))
+
+    # -- resilient loading -------------------------------------------------
+    def _recover(self, reason: str) -> None:
+        if self._reloads >= 2:
+            self._log.error(
+                "UI failed to load (%s); giving up after %d retries", reason, self._reloads
+            )
+            return
+        self._reloads += 1
+        self._log.warning("UI load problem (%s); reloading (%d)", reason, self._reloads)
+        QTimer.singleShot(600, lambda: self._view.load(QUrl(self._ui_url)))
+
+    def _on_load_finished(self, ok: bool) -> None:
+        if not ok:
+            self._recover("load finished with error")
+
+    def _on_render_terminated(self, status, code) -> None:
+        self._recover(f"render process terminated: {status}/{code}")
 
     # -- actions from the web UI ------------------------------------------
     def _on_action(self, action: str) -> None:

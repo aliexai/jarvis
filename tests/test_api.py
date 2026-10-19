@@ -213,3 +213,87 @@ def test_websocket_updates_settings(client, core_state):
         assert message["data"]["ui"]["reduce_motion"] is True
 
     assert load_settings(paths=core_state.paths).ui.reduce_motion is True
+
+
+# -- secrets write + brain status ------------------------------------------
+
+
+def test_put_secret_stores_and_reports_live_brain(client, core_state):
+    core_state.update_settings({"provider": {"name": "gemini"}})
+    response = client.post(
+        f"/api/secrets?token={TOKEN}",
+        json={"name": GEMINI_API_KEY, "value": "AIzaSyABCDEFGHIJKLMNOP1234567890"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["brain"]["mode"] == "live"
+    assert body["brain"]["has_gemini_key"] is True
+    assert body["secrets"][GEMINI_API_KEY]["source"] == "keyring"
+    # The value must never be echoed back.
+    assert "AIzaSyABCDEFGHIJKLMNOP1234567890" not in json.dumps(body)
+
+
+def test_put_secret_rejects_unknown_name(client):
+    response = client.post(
+        f"/api/secrets?token={TOKEN}", json={"name": "NOVA_NOT_A_SECRET", "value": "x"}
+    )
+    assert response.status_code == 400
+
+
+def test_delete_secret_clears_key(client, core_state):
+    core_state.set_secret(GEMINI_API_KEY, "AIzaSyABCDEFGHIJKLMNOP1234567890")
+    response = client.delete(f"/api/secrets/{GEMINI_API_KEY}?token={TOKEN}")
+    assert response.status_code == 200
+    assert response.json()["brain"]["has_gemini_key"] is False
+
+
+def test_brain_needs_key_without_gemini(client, core_state):
+    core_state.update_settings({"provider": {"name": "gemini"}})
+    body = client.get(f"/api/brain?token={TOKEN}").json()
+    assert body["mode"] == "needs_key"
+
+
+def test_brain_reports_demo_for_mock(client):
+    body = client.get(f"/api/brain?token={TOKEN}").json()
+    assert body["mode"] == "demo"
+
+
+def test_voice_devices_reports_availability(client):
+    body = client.get(f"/api/voice/devices?token={TOKEN}").json()
+    assert isinstance(body["available"], bool)
+    assert isinstance(body["devices"], list)
+
+
+def test_hello_includes_brain(client):
+    with client.websocket_connect(f"/ws?token={TOKEN}") as websocket:
+        hello = websocket.receive_json()
+        assert "brain" in hello["data"]
+
+
+def test_setting_a_key_rebuilds_the_provider(client, core_state):
+    core_state.update_settings({"provider": {"name": "gemini"}})
+    before = core_state.provider()
+    client.post(
+        f"/api/secrets?token={TOKEN}",
+        json={"name": GEMINI_API_KEY, "value": "AIzaSyABCDEFGHIJKLMNOP1234567890"},
+    )
+    assert core_state.provider() is not before
+
+
+def test_websocket_surfaces_unexpected_error(client, core_state):
+    """A non-ProviderError must still produce chat.error, never a silent hang."""
+    from nova.providers.mock import MockProvider
+
+    core_state.provider = lambda: MockProvider(fail_with=RuntimeError("boom"))  # type: ignore[method-assign]
+    core_state.chat = core_state._build_chat()
+
+    with client.websocket_connect(f"/ws?token={TOKEN}") as websocket:
+        websocket.receive_json()  # hello
+        websocket.send_json({"type": "chat.send", "text": "explain list versus tuple"})
+        kinds: list[str] = []
+        while True:
+            message = websocket.receive_json()
+            kinds.append(message["type"])
+            if message["type"] in ("chat.done", "chat.error"):
+                break
+    assert "chat.error" in kinds

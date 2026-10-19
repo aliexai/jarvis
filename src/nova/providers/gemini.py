@@ -62,9 +62,20 @@ class GeminiProvider(LLMProvider):
         self._max_retries = max(0, max_retries)
         self._base_backoff = base_backoff
         self._log = get_logger("provider.gemini")
-        self._client = client if client is not None else self._build_client(proxy, timeout_seconds)
+        self._proxy = proxy
+        self._timeout_seconds = timeout_seconds
+        # Built lazily: a missing key must surface as a friendly AuthError at
+        # call time, never as a raw SDK error while merely constructing the
+        # provider (which would drop the chat task with no UI event).
+        self._client = client
 
     # -- construction ------------------------------------------------------
+    def _ensure_client(self) -> Any:
+        if self._client is None:
+            self._require_key()
+            self._client = self._build_client(self._proxy, self._timeout_seconds)
+        return self._client
+
     def _build_client(self, proxy: ProxyDecision | None, timeout_seconds: float) -> Any:
         from google import genai
 
@@ -240,7 +251,8 @@ class GeminiProvider(LLMProvider):
                 await asyncio.sleep(delay)
 
     async def _stream_once(self, request: LLMRequest) -> AsyncIterator[StreamChunk]:
-        stream = await self._client.aio.models.generate_content_stream(
+        client = self._ensure_client()
+        stream = await client.aio.models.generate_content_stream(
             model=request.model,
             contents=self._to_contents(request.messages),
             config=self._build_config(request),
@@ -279,7 +291,7 @@ class GeminiProvider(LLMProvider):
         started = time.perf_counter()
         try:
             self._require_key()
-            response = await self._client.aio.models.generate_content(
+            response = await self._ensure_client().aio.models.generate_content(
                 model=model,
                 contents=[types.Content(role="user", parts=[types.Part(text="ping")])],
                 config=types.GenerateContentConfig(max_output_tokens=5),
@@ -302,6 +314,8 @@ class GeminiProvider(LLMProvider):
 
     async def aclose(self) -> None:
         client = self._client
+        if client is None:
+            return
         try:
             await client.aio.aclose()
         except Exception:

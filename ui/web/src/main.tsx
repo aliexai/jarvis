@@ -12,6 +12,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 
 import { App } from './App';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { CoreProvider } from './state/core';
 import './styles/tokens.css';
 import './styles/themes.css';
@@ -26,8 +27,10 @@ if (!container) {
 
 createRoot(container).render(
   <StrictMode>
-    <CoreProvider>
-      <App />
-    </CoreProvider>
+    <ErrorBoundary>
+      <CoreProvider>
+        <App />
+      </CoreProvider>
+    </ErrorBoundary>
   </StrictMode>,
 );

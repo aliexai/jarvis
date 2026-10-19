@@ -8,6 +8,7 @@ interface OrbProps {
   accent: string;
   performance: boolean;
   reduceMotion: boolean;
+  level?: number;
 }
 
 interface Preset {
@@ -66,12 +67,14 @@ const FRAGMENT_SHADER = /* glsl */ `
 const TARGET_FPS = 30;
 const DEGRADED_FPS = 20;
 
-export function Orb({ state, accent, performance, reduceMotion }: OrbProps) {
+export function Orb({ state, accent, performance, reduceMotion, level = 0 }: OrbProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const uniformsRef = useRef<Record<string, THREE.IUniform> | null>(null);
   const stateRef = useRef<OrbState>(state);
+  const levelRef = useRef(0);
 
   stateRef.current = state;
+  levelRef.current = level;
 
   // Build the scene. Rebuilt only when the quality/accessibility profile changes.
   useEffect(() => {
@@ -162,11 +165,12 @@ export function Orb({ state, accent, performance, reduceMotion }: OrbProps) {
       const preset = PRESETS[stateRef.current];
       uniforms.uTime.value += advance;
 
-      // Audio-reactive states modulate amplitude by a level signal.
-      // Phase 4 replaces this with the real microphone/output level.
+      // Audio-reactive states modulate amplitude by the live microphone level.
+      // Until a level arrives, fall back to a gentle synthetic pulse.
       let amp = preset.amp;
       if (stateRef.current === 'listening' || stateRef.current === 'speaking') {
-        const level = 0.5 + 0.5 * Math.sin(uniforms.uTime.value * 6.0);
+        const live = levelRef.current;
+        const level = live > 0 ? live : 0.5 + 0.5 * Math.sin(uniforms.uTime.value * 6.0);
         amp = preset.amp * (0.55 + 0.45 * level);
       }
       uniforms.uAmp.value = amp;

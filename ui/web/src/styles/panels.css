@@ -56,6 +56,33 @@
   background: var(--accent-soft);
 }
 
+.voice-state-pill {
+  align-self: center;
+  min-width: 96px;
+  text-align: center;
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.voice-meter {
+  align-self: center;
+  width: 160px;
+  height: 6px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  overflow: hidden;
+}
+
+.voice-meter__fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent-soft), var(--accent));
+  transition: width 80ms linear;
+}
+
 .home__transcript {
   max-height: 168px;
   overflow-y: auto;
@@ -635,4 +662,79 @@ select.input {
 .input--narrow {
   min-width: 90px;
   max-width: 110px;
+}
+
+/* ---- brain onboarding ------------------------------------------------ */
+.onboard {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+}
+
+.onboard__head {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.onboard__title {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.onboard__text {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: var(--text-sm);
+  line-height: 1.55;
+}
+
+.onboard__key {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.onboard__input {
+  flex: 1;
+}
+
+.onboard__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.onboard__link {
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  text-decoration: none;
+}
+
+.onboard__link:hover {
+  text-decoration: underline;
+}
+
+.onboard__ok {
+  margin: 0;
+  color: var(--accent);
+  font-size: var(--text-sm);
+}
+
+.onboard__error {
+  margin: 0;
+  color: #f87171;
+  font-size: var(--text-sm);
+}
+
+.notice--demo {
+  margin: 0;
+  border-color: rgba(251, 191, 36, 0.45);
+  background: rgba(251, 191, 36, 0.08);
 }

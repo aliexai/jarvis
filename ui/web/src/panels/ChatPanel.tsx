@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
 
 import { Markdown } from '../components/Markdown';
+import { BrainOnboarding } from '../components/BrainOnboarding';
 import { SendIcon } from '../components/icons';
 import { SEED } from '../lib/api';
 import { formatArgs, formatCost, formatTokens, statusTone } from '../lib/format';
@@ -71,7 +72,7 @@ function Message({ message }: { message: ChatMessage }) {
 }
 
 export function ChatPanel() {
-  const { messages, sendMessage, cancelStream, clearChat, connection, streaming, budget, tools } =
+  const { messages, sendMessage, cancelStream, clearChat, connection, streaming, budget, tools, brain } =
     useCore();
   const [draft, setDraft] = useState('');
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -127,8 +128,18 @@ export function ChatPanel() {
       </header>
 
       <div className="chat">
+        {brain?.mode === 'needs_key' ? <BrainOnboarding /> : null}
+        {brain?.mode === 'demo' ? (
+          <div className="notice notice--demo">
+            <span className="pill pill--warn">demo</span>
+            <p className="notice__text">
+              Demo mode — replies are canned by NOVA&rsquo;s built-in mock provider. No network,
+              no cost. Add a Gemini key in Settings to go live.
+            </p>
+          </div>
+        ) : null}
         <div className="chat__list" ref={listRef}>
-          {messages.length === 0 ? (
+          {messages.length === 0 && brain?.mode !== 'needs_key' ? (
             <div className="placeholder">
               <div className="placeholder__inner">
                 <h2 className="placeholder__title">No messages yet</h2>

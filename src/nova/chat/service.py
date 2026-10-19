@@ -246,6 +246,27 @@ class ChatService:
             outcome.aborted = True
             raise
 
+        except Exception as exc:
+            # Anything that is not a typed ProviderError must still reach the UI,
+            # otherwise the stream silently hangs with no chat.done or chat.error.
+            self._log.exception("chat pipeline failed: %s", exc)
+            outcome.error_kind = "unknown"
+            message = "Something went wrong while handling that message. Please try again."
+            if assistant_text:
+                self._record(cid, decision.model, assistant_text, usage, settings)
+            else:
+                self._store.add_message(
+                    cid, "model", message, model=decision.model, error_kind="unknown"
+                )
+            persisted = True
+            await emit(
+                {
+                    "type": "chat.error",
+                    "data": {"id": stream_id, "kind": "unknown", "message": message},
+                }
+            )
+            return outcome
+
         finally:
             # Runs even on cancellation: never lose what was already streamed.
             if not persisted and assistant_text:

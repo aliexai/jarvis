@@ -35,6 +35,27 @@ _READY_POLL_MS = 200
 _SETTLE_MS = 1200
 
 
+def configure_qt_environment() -> None:
+    """Set up Chromium/OpenGL before any Qt object exists.
+
+    Without shared OpenGL contexts the web engine can fail to composite and
+    leave a blank frameless window with no way to close it. This mirrors what
+    ``tests/conftest.py`` already needs, but for the real app. A user-supplied
+    ``QTWEBENGINE_CHROMIUM_FLAGS`` always wins; ``NOVA_SOFTWARE_RENDER=1`` opts
+    into software rendering for machines whose GPU can't host the compositor.
+    """
+    flags = os.environ.get("QTWEBENGINE_CHROMIUM_FLAGS", "")
+    if os.environ.get("NOVA_SOFTWARE_RENDER") == "1" and "--disable-gpu" not in flags:
+        flags = (flags + " --disable-gpu").strip()
+    os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = flags
+    try:
+        from PySide6.QtCore import QCoreApplication, Qt
+
+        QCoreApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts, True)
+    except Exception:  # pragma: no cover - depends on Qt build
+        pass
+
+
 def dist_dir() -> Path:
     """Locate the built front-end bundle."""
     override = os.environ.get("NOVA_UI_DIST")
@@ -164,6 +185,48 @@ def _when_ready(
     return timer
 
 
+def _install_render_watchdog(
+    window, state: CoreState, ui_url: str, timeout_ms: int = 25_000
+) -> QTimer:
+    """If the web view never reports ready, give the user a native way out.
+
+    A blank frameless window has no chrome to close it, so the escape hatch has
+    to come from outside the web view.
+    """
+
+    def check() -> None:
+        if state.ui_ready.is_set():
+            return
+        from PySide6.QtWidgets import QMessageBox
+
+        box = QMessageBox(window)
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setWindowTitle("NOVA could not render")
+        box.setText(
+            "The interface did not finish loading. This is usually a graphics driver "
+            "issue.\n\nTry starting NOVA with the NOVA_SOFTWARE_RENDER=1 environment "
+            "variable set."
+        )
+        open_button = box.addButton("Open in browser", QMessageBox.ButtonRole.AcceptRole)
+        close_button = box.addButton("Close NOVA", QMessageBox.ButtonRole.RejectRole)
+        box.setDefaultButton(close_button)
+        window.showNormal()
+        window.raise_()
+        box.exec()
+        if box.clickedButton() is open_button:
+            import webbrowser
+
+            webbrowser.open(ui_url)
+        else:
+            window.close()
+
+    timer = QTimer(window)
+    timer.setSingleShot(True)
+    timer.timeout.connect(check)
+    timer.start(timeout_ms)
+    return timer
+
+
 # -- entry point -----------------------------------------------------------
 def run(
     *,
@@ -176,6 +239,7 @@ def run(
     measure: float | None = None,
     out: str | None = None,
 ) -> int:
+    configure_qt_environment()
     QApplication.setHighDpiScaleFactorRoundingPolicy(
         Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
     )
@@ -219,6 +283,13 @@ def run(
     window.show()
     tray = create_tray(app, window, on_quit=quit_app)
     app.aboutToQuit.connect(lambda: tray.hide())
+
+    if shot is None and measure is None:
+        _install_render_watchdog(
+            window,
+            state,
+            server.ui_url(panel=panel, theme=theme, seed=seed, scroll=scroll),
+        )
 
     if shot:
 

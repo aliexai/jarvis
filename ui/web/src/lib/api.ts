@@ -1,11 +1,14 @@
 import type {
+  BrainStatus,
   BudgetStatus,
   ConnectionTest,
   Diagnostics,
   PanelId,
   SecretsResponse,
+  SecretStatus,
   Settings,
   ThemeName,
+  VoiceDevices,
 } from './types';
 
 const params = new URLSearchParams(window.location.search);
@@ -49,6 +52,33 @@ export function putSettings(patch: unknown): Promise<Settings> {
 
 export function getSecrets(): Promise<SecretsResponse> {
   return request<SecretsResponse>('/api/secrets');
+}
+
+export function getBrain(): Promise<BrainStatus> {
+  return request<BrainStatus>('/api/brain');
+}
+
+export function getVoiceDevices(): Promise<VoiceDevices> {
+  return request<VoiceDevices>('/api/voice/devices');
+}
+
+export interface SecretWriteResult {
+  secrets: Record<string, SecretStatus>;
+  brain: BrainStatus;
+  settings: Settings;
+}
+
+export function setSecret(name: string, value: string): Promise<SecretWriteResult> {
+  return request<SecretWriteResult>('/api/secrets', {
+    method: 'POST',
+    body: JSON.stringify({ name, value }),
+  });
+}
+
+export function deleteSecret(
+  name: string,
+): Promise<{ secrets: Record<string, SecretStatus>; brain: BrainStatus }> {
+  return request(`/api/secrets/${encodeURIComponent(name)}`, { method: 'DELETE' });
 }
 
 export function getDiagnostics(): Promise<Diagnostics> {
