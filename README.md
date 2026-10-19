@@ -244,3 +244,5 @@ Done: skeleton & security (1) · Command Center shell (2) · Gemini brain (3).
 Next: **Phase 4 voice** · Phase 5 PC-control tools · Phase 6 coding agent ·
 Phase 7 memory & Agent Town · Phase 8 world monitor, system panel, mini mode ·
 Phase 9 packaging & hardening.
+#   j a r v i s  
+ 
